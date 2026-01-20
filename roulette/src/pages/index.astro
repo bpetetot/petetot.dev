@@ -1,8 +1,446 @@
 ---
-import Welcome from "../components/Welcome.astro";
-import Layout from "../layouts/Layout.astro";
+
 ---
 
-<Layout>
-  <Welcome />
-</Layout>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+    <title>Roulette</title>
+  </head>
+  <body>
+    <div class="background-glow"></div>
+    <main>
+      <div class="roulette-container">
+        <div class="wheel-glow"></div>
+        <div class="pointer"></div>
+        <ul class="roulette">
+          <li><span>Hello</span></li>
+          <li><span>World</span></li>
+          <li><span>Universe</span></li>
+          <li><span>Galaxy</span></li>
+          <li><span>Ether</span></li>
+          <li><span>House</span></li>
+          <li><span>Castle</span></li>
+        </ul>
+        <div class="center-dot"></div>
+      </div>
+
+      <button type="button">
+        <span class="btn-text">Let's spin!</span>
+        <span class="btn-glow"></span>
+      </button>
+      <p class="hint">Press <kbd>Space</kbd> to spin</p>
+    </main>
+  </body>
+</html>
+
+<script>
+  const roulette = document.querySelector<HTMLElement>(".roulette");
+  const items = document.querySelectorAll<HTMLElement>(".roulette > li");
+  const itemsCount = items.length;
+  const sliceAngle = 360 / itemsCount;
+
+  // Set CSS variables for each item
+  items.forEach((li, index) => {
+    li.style.setProperty("--index", index.toString());
+  });
+
+  // Set global roulette variables
+  if (roulette) {
+    roulette.style.setProperty("--items-count", itemsCount.toString());
+    roulette.style.setProperty("--slice-angle", `${sliceAngle}deg`);
+  }
+
+  // Tick sound using Web Audio API
+  let audioCtx: AudioContext | null = null;
+
+  function playTick() {
+    if (!audioCtx) audioCtx = new AudioContext();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.frequency.value = 1200;
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.03);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.03);
+  }
+
+  // Spin
+  const button = document.querySelector("button");
+  const pointer = document.querySelector<HTMLElement>(".pointer");
+  let targetRotation = 0;
+  let lastSlice = 0;
+  let pointerAngle = 0;
+  let returnTimeout: number | null = null;
+
+  function setPointerAngle(angle: number) {
+    pointerAngle = angle;
+    pointer?.style.setProperty("--pointer-angle", `${angle}deg`);
+  }
+
+  function spin() {
+    if (!audioCtx) audioCtx = new AudioContext();
+
+    const spins = 5 + Math.random() * 5;
+    targetRotation += spins * 360 + Math.random() * 360;
+    roulette?.style.setProperty("--rotation", `${targetRotation}deg`);
+
+    // Monitor rotation during CSS transition to play ticks
+    const startTime = performance.now();
+
+    function checkRotation() {
+      const style = getComputedStyle(roulette!);
+      const matrix = new DOMMatrix(style.transform);
+      const angle = Math.atan2(matrix.b, matrix.a) * (180 / Math.PI);
+      const rotation = angle < 0 ? angle + 360 : angle;
+      // Offset by half slice so tick triggers at edges, not centers
+      // Modulo handles the 360° → 0° wrap correctly
+      const currentSlice =
+        Math.floor((rotation + sliceAngle / 2) / sliceAngle) % itemsCount;
+
+      if (currentSlice !== lastSlice) {
+        playTick();
+
+        // Deflect pointer further (accumulates if spinning fast)
+        if (returnTimeout) clearTimeout(returnTimeout);
+        const newAngle = Math.max(pointerAngle - 15, -30);
+        setPointerAngle(newAngle);
+
+        // Add shake class when deflected enough
+        if (newAngle <= -25) {
+          pointer?.classList.add("shake");
+        }
+
+        // Schedule return to rest
+        returnTimeout = setTimeout(() => {
+          setPointerAngle(0);
+          pointer?.classList.remove("shake");
+        }, 150);
+
+        lastSlice = currentSlice;
+      }
+
+      if (performance.now() - startTime < 4000) {
+        requestAnimationFrame(checkRotation);
+      }
+    }
+    requestAnimationFrame(checkRotation);
+  }
+
+  button?.addEventListener("click", spin);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.code === "Space") {
+      e.preventDefault();
+      spin();
+    }
+  });
+</script>
+
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    font-family:
+      system-ui,
+      -apple-system,
+      sans-serif;
+    background: #050508;
+    color: white;
+    overflow: hidden;
+  }
+
+  /* Blurry gradient background */
+  .background-glow {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 150vmax;
+    height: 150vmax;
+    transform: translate(-50%, -50%);
+    background: conic-gradient(
+      hsl(0, 70%, 50%),
+      hsl(45, 70%, 50%),
+      hsl(90, 70%, 50%),
+      hsl(135, 70%, 50%),
+      hsl(180, 70%, 50%),
+      hsl(225, 70%, 50%),
+      hsl(270, 70%, 50%),
+      hsl(315, 70%, 50%),
+      hsl(360, 70%, 50%)
+    );
+    filter: blur(120px);
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  main {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    gap: clamp(1.5rem, 4vw, 2.5rem);
+    padding: 1rem;
+  }
+
+  /* Roulette Container */
+  .roulette-container {
+    --wheel-size: clamp(280px, 70vmin, 550px);
+    position: relative;
+  }
+
+  /* Pulsing glow behind wheel */
+  .wheel-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: calc(var(--wheel-size) * 1.3);
+    height: calc(var(--wheel-size) * 1.3);
+    transform: translate(-50%, -50%);
+    background: radial-gradient(
+      circle,
+      rgba(255, 215, 0, 0.3) 0%,
+      rgba(255, 150, 0, 0.15) 40%,
+      transparent 70%
+    );
+    border-radius: 50%;
+    animation: pulse 3s ease-in-out infinite;
+    z-index: -1;
+  }
+
+  @keyframes pulse {
+    0%,
+    100% {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 0.6;
+    }
+    50% {
+      transform: translate(-50%, -50%) scale(1.1);
+      opacity: 1;
+    }
+  }
+
+  /* Pointer - positioned at the top */
+  .pointer {
+    --pointer-size: clamp(24px, 6vmin, 36px);
+    --pointer-angle: 0deg;
+    position: absolute;
+    top: calc(var(--pointer-size) * -0.5);
+    left: 50%;
+    transform: translateX(-50%) rotate(var(--pointer-angle));
+    transform-origin: top center;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+    width: 0;
+    height: 0;
+    border-left: calc(var(--pointer-size) * 0.5) solid transparent;
+    border-right: calc(var(--pointer-size) * 0.5) solid transparent;
+    border-top: var(--pointer-size) solid #ffd700;
+    z-index: 10;
+    filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.8))
+      drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5));
+  }
+
+  .pointer.shake {
+    animation: shake 0.05s linear infinite;
+  }
+
+  @keyframes shake {
+    0%,
+    100% {
+      transform: translateX(-50%) rotate(calc(var(--pointer-angle) - 5deg));
+    }
+    50% {
+      transform: translateX(-50%) rotate(calc(var(--pointer-angle) + 5deg));
+    }
+  }
+
+  /* Roulette Wheel */
+  .roulette {
+    --items-count: 5;
+    --slice-angle: 72deg;
+    --rotation: 0deg;
+    --hue-step: calc(360 / var(--items-count));
+
+    position: relative;
+    width: var(--wheel-size);
+    height: var(--wheel-size);
+    list-style: none;
+    border-radius: 50%;
+    overflow: hidden;
+    transform: rotate(var(--rotation));
+    transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
+    box-shadow:
+      inset 0 0 30px rgba(0, 0, 0, 0.3),
+      0 0 0 6px rgba(255, 255, 255, 0.1),
+      0 0 0 8px #1a1a2e,
+      0 0 0 12px #ffd700,
+      0 0 0 14px rgba(255, 215, 0, 0.3),
+      0 0 50px rgba(255, 215, 0, 0.2),
+      0 10px 40px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Individual Slice */
+  .roulette li {
+    --index: 0;
+    --half-angle: calc(var(--slice-angle) / 2);
+    --x1: calc(50% + 70% * sin(-1 * var(--half-angle)));
+    --y1: calc(50% - 70% * cos(-1 * var(--half-angle)));
+    --x2: calc(50% + 70% * sin(var(--half-angle)));
+    --y2: calc(50% - 70% * cos(var(--half-angle)));
+
+    position: absolute;
+    inset: 0;
+    clip-path: polygon(
+      50% 50%,
+      var(--x1) var(--y1),
+      50% 0%,
+      var(--x2) var(--y2)
+    );
+    background: linear-gradient(
+      to bottom,
+      hsl(calc(var(--index) * var(--hue-step)), 70%, 55%) 0%,
+      hsl(calc(var(--index) * var(--hue-step)), 65%, 45%) 100%
+    );
+    transform: rotate(calc(var(--index) * var(--slice-angle)));
+    transform-origin: center center;
+  }
+
+  /* Text inside slice */
+  .roulette li span {
+    position: absolute;
+    top: 8%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(2 * 30% * tan(var(--half-angle)));
+    max-height: 38%;
+    font-weight: 700;
+    font-size: clamp(0.7rem, 2.2vmin, 1.3rem);
+    line-height: 1.3;
+    color: white;
+    text-align: center;
+    text-wrap: balance;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    overflow: hidden;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+  }
+
+  /* Center dot - separate element so it doesn't rotate */
+  .center-dot {
+    --dot-size: clamp(30px, 8vmin, 50px);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: var(--dot-size);
+    height: var(--dot-size);
+    background: linear-gradient(135deg, #ffd700 0%, #ff9500 50%, #ff6b00 100%);
+    border-radius: 50%;
+    box-shadow:
+      inset 0 -3px 6px rgba(0, 0, 0, 0.3),
+      0 0 0 4px #1a1a2e,
+      0 0 0 6px rgba(255, 215, 0, 0.5),
+      0 4px 15px rgba(0, 0, 0, 0.4);
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  /* Button with glow effect */
+  button {
+    position: relative;
+    padding: clamp(1rem, 3vw, 1.25rem) clamp(2rem, 6vw, 3rem);
+    font-size: clamp(1rem, 3vw, 1.25rem);
+    font-weight: 800;
+    background: linear-gradient(135deg, #ffd700 0%, #ffaa00 50%, #ff8c00 100%);
+    border: none;
+    border-radius: 60px;
+    cursor: pointer;
+    color: #1a1a2e;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow:
+      0 4px 15px rgba(255, 170, 0, 0.4),
+      0 0 30px rgba(255, 170, 0, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+
+  .btn-text {
+    position: relative;
+    z-index: 1;
+  }
+
+  .btn-glow {
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+      45deg,
+      transparent 40%,
+      rgba(255, 255, 255, 0.3) 50%,
+      transparent 60%
+    );
+    transform: translateX(-100%);
+    animation: btn-shine 12s ease-in-out infinite;
+  }
+
+  @keyframes btn-shine {
+    0%,
+    100% {
+      transform: translateX(-100%);
+    }
+    50% {
+      transform: translateX(100%);
+    }
+  }
+
+  button:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow:
+      0 8px 25px rgba(255, 170, 0, 0.5),
+      0 0 50px rgba(255, 170, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  }
+
+  button:active {
+    transform: translateY(-2px) scale(1);
+  }
+
+  /* Hint text */
+  .hint {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.4);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .hint kbd {
+    padding: 0.2rem 0.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.8rem;
+  }
+</style>
